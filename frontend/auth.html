@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Авторизація через Phantom</title>
+</head>
+<body>
+  <h1>🔐 Увійти через Phantom</h1>
+  <button id="login">Увійти</button>
+  <p id="status">Не авторизовано</p>
+
+  <script>
+    document.getElementById("login").onclick = async () => {
+      const status = document.getElementById("status");
+
+      if (!window.solana || !window.solana.isPhantom) {
+        return alert("Встанови Phantom Wallet");
+      }
+
+      try {
+        const resp = await window.solana.connect();
+        const wallet = resp.publicKey.toString();
+        status.textContent = "Підключено: " + wallet;
+
+        // 1. Отримуємо nonce
+        const nonceRes = await fetch("http://localhost:3000/auth/nonce", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wallet }),
+        });
+
+        const { nonce } = await nonceRes.json();
+
+        // 2. Підписуємо nonce
+        const encoded = new TextEncoder().encode(nonce);
+        const signed = await window.solana.signMessage(encoded, "utf8");
+
+        // 3. Відправляємо для перевірки
+        const res = await fetch("http://localhost:3000/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            wallet,
+            signature: Array.from(signed.signature), // Uint8Array → Array
+          }),
+        });
+
+        const data = await res.json();
+        if (data.success && data.token) {
+          localStorage.setItem("jwt", data.token);
+          status.textContent = "✅ Авторизовано!";
+          window.location.href = "./dashboard.html";
+        } else {
+          status.textContent = "❌ Авторизація неуспішна";
+        }
+      } catch (err) {
+        console.error(err);
+        status.textContent = "Помилка: " + err.message;
+      }
+    };
+  </script>
+</body>
+</html>
