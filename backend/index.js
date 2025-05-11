@@ -13,6 +13,7 @@ ed25519.etc.sha512Sync = (msg) => crypto.createHash("sha512").update(msg).digest
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use('/session', sessionRoutes);
 
 const JWT_SECRET = "very_secret_key_123";
 const nonces = {}; // для nonce
