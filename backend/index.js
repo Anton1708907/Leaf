@@ -6,6 +6,7 @@ const ed25519 = require("@noble/ed25519");
 const jwt = require("jsonwebtoken");
 const { PublicKey, Connection, clusterApiUrl, Keypair, SystemProgram } = require("@solana/web3.js");
 const anchor = require("@project-serum/anchor");
+const sessionRoutes = require('./routes/session');
 
 // === Ініціалізація ===
 ed25519.etc.sha512Sync = (msg) => crypto.createHash("sha512").update(msg).digest();
