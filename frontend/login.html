@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Вхід</title>
+</head>
+<body>
+  <h2>🔑 Вхід</h2>
+  <form id="loginForm">
+    <input type="email" placeholder="Email" name="email" required /><br />
+    <button type="submit">Увійти</button>
+  </form>
+  <p id="result"></p>
+  <script>
+    document.getElementById("loginForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        email: form.email.value
+      };
+
+      const res = await fetch("http://localhost:3000/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+
+      const result = await res.json();
+      if (result.token) {
+        localStorage.setItem("jwt", result.token);
+        window.location.href = "dashboard.html";
+      } else {
+        document.getElementById("result").textContent = result.error || "Помилка";
+      }
+    };
+  </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 {
   "version": "0.1.0",
   "name": "gpumarket",
+  "address": "DPQG3BiR9Avg5mknQTDKZ24w4T9D8NEKmgALvEyyH2N4",
   "instructions": [
     {
       "name": "registerGpu",
@@ -8,7 +9,7 @@
         {
           "name": "gpuAccount",
           "isMut": true,
-          "isSigner": true
+          "isSigner": false
         },
         {
           "name": "owner",
@@ -27,6 +28,57 @@
           "type": "string"
         }
       ]
+    },
+    {
+      "name": "startSession",
+      "accounts": [
+        {
+          "name": "sessionAccount",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "renter",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "gpuAccount",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": [
+        {
+          "name": "durationHours",
+          "type": "u64"
+        },
+        {
+          "name": "pricePerHour",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "endSession",
+      "accounts": [
+        {
+          "name": "sessionAccount",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "provider",
+          "isMut": true,
+          "isSigner": true
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -49,9 +101,68 @@
           }
         ]
       }
+    },
+    {
+      "name": "Session",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "renter",
+            "type": "publicKey"
+          },
+          {
+            "name": "provider",
+            "type": "publicKey"
+          },
+          {
+            "name": "gpu",
+            "type": "publicKey"
+          },
+          {
+            "name": "startTime",
+            "type": "i64"
+          },
+          {
+            "name": "durationHours",
+            "type": "u64"
+          },
+          {
+            "name": "pricePerHour",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": { "defined": "SessionStatus" }
+          }
+        ]
+      }
     }
   ],
-  "metadata": {
-    "address": "BddqQ2dwbQLtbcgEg1v9QAFejU7vnEAVHcvutCd98eBT"
-  }
+  "types": [
+    {
+      "name": "SessionStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "Active" },
+          { "name": "Completed" },
+          { "name": "Cancelled" }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "SessionNotActive",
+      "msg": "Session is not active."
+    },
+    {
+      "code": 6001,
+      "name": "InsufficientFunds",
+      "msg": "Insufficient funds in session account."
+    }
+  ]
 }
+  

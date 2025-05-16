@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Реєстрація</title>
+</head>
+<body>
+  <h2>🔐 Реєстрація</h2>
+  <form id="registerForm">
+    <input type="text" placeholder="Ім’я" name="username" required /><br />
+    <input type="email" placeholder="Email" name="email" required /><br />
+    <select name="role">
+      <option value="provider">Постачальник (provider)</option>
+      <option value="renter">Орендар (renter)</option>
+    </select><br />
+    <button type="submit">Зареєструватися</button>
+  </form>
+  <p id="result"></p>
+  <script>
+    document.getElementById("registerForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        username: form.username.value,
+        email: form.email.value,
+        role: form.role.value
+      };
+
+      const res = await fetch("http://localhost:3000/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+
+      const result = await res.json();
+      if (result.token) {
+        localStorage.setItem("jwt", result.token);
+        window.location.href = "dashboard.html";
+      } else {
+        document.getElementById("result").textContent = result.error || "Помилка";
+      }
+    };
+  </script>
+</body>
+</html>

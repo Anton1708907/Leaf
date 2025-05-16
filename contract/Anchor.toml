@@ -6,14 +6,14 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-gpumarket = "EVCyQThJVQXsYFTqHsU4rUg84CshcV69kG8QNakgCcKo"
+gpumarket = "DPQG3BiR9Avg5mknQTDKZ24w4T9D8NEKmgALvEyyH2N4"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
-wallet = "~/projects/sol/backend/wallet/keypair.json"
+wallet = "./programs/gpumarket/wallet/new_program-keypair.json"
 
 [scripts]
 test = "yarn run mocha -t 1000000 tests/"

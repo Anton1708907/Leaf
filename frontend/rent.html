@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Оренда GPU</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; padding: 2em; background: #f2f2f2; }
+    .gpu-card {
+      background: white;
+      padding: 1em;
+      margin-bottom: 1em;
+      border-radius: 5px;
+      box-shadow: 0 0 3px rgba(0,0,0,0.1);
+    }
+    .gpu-card input {
+      margin-top: 0.5em;
+      display: block;
+    }
+    .gpu-card button {
+      margin-top: 0.5em;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧠 Орендувати GPU</h1>
+  <div id="gpuList">Завантаження...</div>
+
+  <script>
+    const token = localStorage.getItem("jwt");
+    const gpuList = document.getElementById("gpuList");
+
+    if (!token) {
+      alert("⛔ Спочатку увійдіть");
+      window.location.href = "login.html";
+    }
+
+    async function fetchAvailableGPUs() {
+      const res = await fetch("http://localhost:3000/gpus/available");
+      const gpus = await res.json();
+      gpuList.innerHTML = "";
+
+      if (!gpus.length) {
+        gpuList.innerHTML = "<p>Поки немає доступних GPU 😢</p>";
+        return;
+      }
+
+      gpus.forEach(gpu => {
+        const card = document.createElement("div");
+        card.className = "gpu-card";
+        card.id = `gpu-${gpu.id}`;
+        card.innerHTML = `
+          <strong>${gpu.model}</strong> (${gpu.vram_gb}GB VRAM)<br>
+          Локація: ${gpu.location || "—"}<br>
+          Ціна: ${gpu.price_per_hour} SOL/год<br>
+          <input type="number" placeholder="Годин для оренди" min="1" id="dur-${gpu.id}" />
+          <button onclick="rentGPU('${gpu.id}', '${gpu.price_per_hour}')">Орендувати</button>
+          <p id="status-${gpu.id}"></p>
+        `;
+        gpuList.appendChild(card);
+      });
+    }
+
+    async function rentGPU(gpuId, pricePerHour) {
+      const durationInput = document.getElementById(`dur-${gpuId}`);
+      const statusMsg = document.getElementById(`status-${gpuId}`);
+      const duration = parseInt(durationInput.value);
+
+      if (!duration || duration < 1) {
+        return alert("Введіть правильну кількість годин");
+      }
+
+      try {
+        const res = await fetch("http://localhost:3000/sessions/start", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token
+          },
+          body: JSON.stringify({
+            gpu_id: gpuId,
+            duration_hours: duration,
+            price_per_hour: parseFloat(pricePerHour)
+          })
+        });
+
+        const result = await res.json();
+        if (result.success) {
+          const session = result.session;
+          const sessionId = session.id;
+          statusMsg.innerHTML = `✅ Сесія активна (${duration} год)<br>`;
+
+          const finishBtn = document.createElement("button");
+          finishBtn.textContent = "⏹ Завершити вручну";
+          finishBtn.onclick = () => endSession(sessionId, gpuId);
+          statusMsg.appendChild(finishBtn);
+
+          // Автоматичне завершення після зазначеного часу
+          setTimeout(() => {
+            endSession(sessionId, gpuId);
+          }, duration * 3600 * 1000); // годин → мс
+        } else {
+          statusMsg.textContent = "❌ " + result.error;
+        }
+      } catch (err) {
+        statusMsg.textContent = "❌ Системна помилка";
+        console.error(err);
+      }
+    }
+
+    async function endSession(sessionId, gpuId) {
+      const statusMsg = document.getElementById(`status-${gpuId}`);
+
+      try {
+        const res = await fetch("http://localhost:3000/sessions/end", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ session_id: sessionId })
+        });
+
+        const result = await res.json();
+        if (res.ok) {
+          statusMsg.innerHTML = `✅ Завершено. Вартість: ${result.total_cost} SOL<br>🎁 Нагорода: ${result.reward_issued} SOL`;
+        } else {
+          statusMsg.textContent = "❌ Помилка: " + result.error;
+        }
+      } catch (err) {
+        statusMsg.textContent = "❌ Системна помилка";
+        console.error(err);
+      }
+    }
+
+    fetchAvailableGPUs();
+  </script>
+</body>
+</html>

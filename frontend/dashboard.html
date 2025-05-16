@@ -1,80 +1,232 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Особистий кабінет</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; padding: 2em; background: #f4f4f4; }
+    .gpu-card {
+      background: white;
+      padding: 1em;
+      margin-bottom: 1em;
+      border-radius: 5px;
+      box-shadow: 0 0 4px rgba(0,0,0,0.1);
+    }
+    form input, form select {
+      margin-bottom: 0.5em;
+      display: block;
+    }
+  </style>
+  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
 </head>
-<body class="bg-light">
-  <div class="container py-5">
-    <div class="text-center mb-4">
-      <h1 class="fw-bold">👤 Особистий кабінет</h1>
-      <p class="text-muted">Тут ти можеш зареєструвати свій GPU</p>
-    </div>
+<body>
+  <h1>👤 Особистий кабінет</h1>
+  <div id="profile">Завантаження...</div>
 
-    <div class="card p-4 shadow-sm">
-      <p><strong>💼 Адреса гаманця:</strong> <span id="wallet">завантаження...</span></p>
-      <p><strong>🔧 GPU:</strong> <span id="gpu">не зареєстровано</span></p>
-      <button id="registerBtn" class="btn btn-success">📦 Зареєструвати GPU</button>
-    </div>
-  </div>
+  <hr>
+
+  <button id="connectPhantom">🔗 Підключити Phantom</button>
+  <p id="walletStatus">⏳ Гаманець не підключено</p>
+
+  <hr>
+
+  <h2>💻 Мої GPU</h2>
+  <div id="gpus"></div>
+
+  <hr>
+
+  <h2>➕ Додати GPU</h2>
+  <form id="addGpuForm">
+    <input type="text" name="model" placeholder="Модель GPU (e.g. RTX 3080)" required><br>
+    <input type="number" name="vram_gb" placeholder="VRAM (в ГБ)" required><br>
+    <input type="text" name="location" placeholder="Локація (наприклад, Київ)" required><br>
+    <input type="number" step="0.01" name="price_per_hour" placeholder="Ціна за годину (SOL)" required><br>
+    <button type="submit">Додати</button>
+  </form>
+  <p id="gpuAddStatus"></p>
 
   <script>
     const token = localStorage.getItem("jwt");
-    const walletSpan = document.getElementById("wallet");
-    const gpuSpan = document.getElementById("gpu");
-    const registerBtn = document.getElementById("registerBtn");
+    const profileDiv = document.getElementById("profile");
+    const gpusDiv = document.getElementById("gpus");
+    const walletStatus = document.getElementById("walletStatus");
+    let currentUserId = null;
 
     if (!token) {
-      alert("⛔ Ви не авторизовані. Перенаправляємо...");
-      window.location.href = "auth.html";
+      alert("⛔ Спочатку увійдіть");
+      window.location.href = "login.html";
     }
 
-    // Запит /auth/me
-    fetch("http://localhost:3000/auth/me", {
-      headers: {
-        Authorization: "Bearer " + token,
-      },
-    })
-    .then((res) => res.json())
-    .then((data) => {
-      if (data.wallet) {
-        walletSpan.textContent = data.wallet;
-      } else {
-        alert("❌ Авторизацію втрачено. Перенаправляємо...");
-        window.location.href = "auth.html";
+    async function fetchUser() {
+      const res = await fetch("http://localhost:3000/auth/me", {
+        headers: { Authorization: "Bearer " + token }
+      });
+      const user = await res.json();
+      currentUserId = user.id;
+      profileDiv.innerHTML = `
+        <p><strong>Ім’я:</strong> ${user.username}</p>
+        <p><strong>Email:</strong> ${user.email}</p>
+        <p><strong>Роль:</strong> ${user.role}</p>
+      `;
+      fetchGPUs(user.id);
+    }
+
+    async function fetchGPUs(userId) {
+      const res = await fetch(`http://localhost:3000/gpus/user/${userId}`);
+      const gpus = await res.json();
+      gpusDiv.innerHTML = "";
+
+      if (!gpus.length) {
+        gpusDiv.innerHTML = "<p>У вас ще немає GPU.</p>";
+        return;
       }
-    })
-    .catch(() => {
-      alert("⚠️ Помилка з'єднання.");
-      window.location.href = "auth.html";
-    });
 
-    // При натисканні на кнопку
-    registerBtn.onclick = () => {
-      gpuSpan.textContent = "⏳ Реєстрація...";
-      const fakeSpecs = "NVIDIA RTX 4090 (згенеровано)";
+      gpus.forEach(gpu => {
+        const card = document.createElement("div");
+        card.className = "gpu-card";
+        card.innerHTML = `
+          <strong>${gpu.model}</strong> (${gpu.vram_gb}GB VRAM)<br>
+          Локація: ${gpu.location || '—'}<br>
+          Статус: ${gpu.status}<br>
+          Ціна: ${gpu.price_per_hour} SOL/год
+        `;
+        gpusDiv.appendChild(card);
+      });
+    }
 
-      fetch("http://localhost:3000/register-gpu", {
+    async function savePublicKey(publicKey) {
+      const res = await fetch("http://localhost:3000/wallet/connect-wallet", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
+          Authorization: "Bearer " + token
         },
-        body: JSON.stringify({ specs: fakeSpecs }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.gpuAddress) {
-            gpuSpan.textContent = "✅ Зареєстровано: " + data.gpuAddress;
-          } else {
-            gpuSpan.textContent = "❌ Помилка: " + data.error;
-          }
-        })
-        .catch(() => {
-          gpuSpan.textContent = "⚠️ Помилка мережі";
-        });
+        body: JSON.stringify({ publicKey })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        walletStatus.textContent += " ✅ гаманець збережено";
+      } else {
+        walletStatus.textContent = "❌ Помилка: " + data.error;
+      }
+    }
+
+    document.getElementById("connectPhantom").onclick = async () => {
+      if (!window.solana || !window.solana.isPhantom) {
+        return alert("Встановіть Phantom Wallet: https://phantom.app/");
+      }
+
+      try {
+        const resp = await window.solana.connect();
+        const publicKey = resp.publicKey.toString();
+        walletStatus.textContent = "🔐 Підключено: " + publicKey;
+        await savePublicKey(publicKey);
+      } catch (err) {
+        if (err.code === 77) {
+          walletStatus.textContent = "⛔ Ви відхилили запит на підключення";
+        } else {
+          walletStatus.textContent = "❌ " + err.message;
+        }
+      }
     };
+
+    window.addEventListener("DOMContentLoaded", async () => {
+      await fetchUser();
+
+      if (window.solana?.isPhantom) {
+        try {
+          const res = await window.solana.connect({ onlyIfTrusted: true });
+          walletStatus.textContent = "🔐 Автопідключено: " + res.publicKey.toString();
+          await savePublicKey(res.publicKey.toString());
+        } catch (e) {
+          walletStatus.textContent = "⚠️ Phantom не підключено";
+        }
+      }
+    });
+
+    document.getElementById("addGpuForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const statusField = document.getElementById("gpuAddStatus");
+
+  if (!window.solana?.isPhantom || !window.solana.publicKey) {
+    return alert("Будь ласка, підключіть Phantom перед додаванням GPU.");
+  }
+
+  const model = form.model.value;
+  const vram = parseInt(form.vram_gb.value);
+  const location = form.location.value;
+  const price = parseFloat(form.price_per_hour.value);
+  const specs = `${model} ${vram}GB`;
+
+  try {
+    // 1️⃣ Отримуємо транзакцію з бекенду
+    const txRes = await fetch("http://localhost:3000/gpus/create-tx", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      body: JSON.stringify({
+        specs: specs,
+        pubkey: window.solana.publicKey.toString(),
+      }),
+    });
+
+    const { transaction, gpu_pubkey, gpu_secret } = await txRes.json();
+    if (!transaction) {
+      statusField.textContent = "❌ Не вдалося створити транзакцію";
+      return;
+    }
+
+    // 2️⃣ Декодуємо Base64 → Uint8Array
+    const rawTx = Uint8Array.from(atob(transaction), c => c.charCodeAt(0));
+    const tx = solanaWeb3.Transaction.from(rawTx);
+
+    // 3️⃣ Підписуємо через Phantom
+    const signedTx = await window.solana.signTransaction(tx);
+    const serializedSigned = signedTx.serialize();
+
+    // 4️⃣ Перетворюємо в Base64
+    const signedBase64 = btoa(String.fromCharCode(...serializedSigned));
+
+    // 5️⃣ Відправляємо на бекенд
+    const submitRes = await fetch("http://localhost:3000/gpus/submit-tx", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+  body: JSON.stringify({
+    signedTx: signedBase64,
+    gpu_pubkey: gpu_pubkey,
+    gpu_secret: gpu_secret, // ✅ ось тут
+    model,
+    vram_gb: vram,
+    location,
+    price_per_hour: price,
+  }),
+    });
+
+    const result = await submitRes.json();
+
+    if (result.success) {
+      statusField.textContent = "✅ GPU успішно додано!";
+      form.reset();
+      fetchGPUs(currentUserId);
+    } else {
+      statusField.textContent = "❌ " + result.error;
+    }
+
+  } catch (err) {
+    console.error(err);
+    statusField.textContent = "❌ Системна помилка";
+  }
+};
+
+    fetchUser();
   </script>
 </body>
 </html>
