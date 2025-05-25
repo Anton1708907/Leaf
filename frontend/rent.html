@@ -21,6 +21,7 @@
       margin-top: 0.5em;
     }
   </style>
+  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
 </head>
 <body>
   <h1>🧠 Орендувати GPU</h1>
@@ -61,76 +62,138 @@
       });
     }
 
-    async function rentGPU(gpuId, pricePerHour) {
-      const durationInput = document.getElementById(`dur-${gpuId}`);
-      const statusMsg = document.getElementById(`status-${gpuId}`);
-      const duration = parseInt(durationInput.value);
+async function rentGPU(gpuId, pricePerHour) {
+  const durationInput = document.getElementById(`dur-${gpuId}`);
+  const statusMsg = document.getElementById(`status-${gpuId}`);
+  const duration = parseInt(durationInput.value);
 
-      if (!duration || duration < 1) {
-        return alert("Введіть правильну кількість годин");
-      }
+  if (!duration || duration < 1) {
+    alert("Введіть правильну кількість годин");
+    return;
+  }
 
-      try {
-        const res = await fetch("http://localhost:3000/sessions/start", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token
-          },
-          body: JSON.stringify({
-            gpu_id: gpuId,
-            duration_hours: duration,
-            price_per_hour: parseFloat(pricePerHour)
-          })
-        });
-
-        const result = await res.json();
-        if (result.success) {
-          const session = result.session;
-          const sessionId = session.id;
-          statusMsg.innerHTML = `✅ Сесія активна (${duration} год)<br>`;
-
-          const finishBtn = document.createElement("button");
-          finishBtn.textContent = "⏹ Завершити вручну";
-          finishBtn.onclick = () => endSession(sessionId, gpuId);
-          statusMsg.appendChild(finishBtn);
-
-          // Автоматичне завершення після зазначеного часу
-          setTimeout(() => {
-            endSession(sessionId, gpuId);
-          }, duration * 3600 * 1000); // годин → мс
-        } else {
-          statusMsg.textContent = "❌ " + result.error;
-        }
-      } catch (err) {
-        statusMsg.textContent = "❌ Системна помилка";
-        console.error(err);
-      }
+  try {
+    // 1️⃣ Перевірка та підключення Phantom-гаманця
+    if (!window.solana?.isPhantom || !window.solana.publicKey) {
+      await window.solana.connect();
     }
 
-    async function endSession(sessionId, gpuId) {
-      const statusMsg = document.getElementById(`status-${gpuId}`);
+    // 2️⃣ Запит на транзакцію до бекенду
+    const res = await fetch("http://localhost:3000/session/start", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({
+        gpu_id: gpuId,
+        duration_hours: duration,
+        price_per_hour: parseFloat(pricePerHour)
+      })
+    });
 
-      try {
-        const res = await fetch("http://localhost:3000/sessions/end", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ session_id: sessionId })
-        });
-
-        const result = await res.json();
-        if (res.ok) {
-          statusMsg.innerHTML = `✅ Завершено. Вартість: ${result.total_cost} SOL<br>🎁 Нагорода: ${result.reward_issued} SOL`;
-        } else {
-          statusMsg.textContent = "❌ Помилка: " + result.error;
-        }
-      } catch (err) {
-        statusMsg.textContent = "❌ Системна помилка";
-        console.error(err);
-      }
+    const data = await res.json();
+    if (!res.ok || !data.tx) {
+      statusMsg.textContent = "❌ " + (data.error || "Не вдалося створити транзакцію");
+      return;
     }
+
+    // 3️⃣ Десеріалізація транзакції без Buffer!
+    const rawTx = Uint8Array.from(atob(data.tx), (c) => c.charCodeAt(0));
+    const tx = solanaWeb3.Transaction.from(rawTx);
+
+    // 4️⃣ ОНОВЛЮЄМО blockhash і feePayer НА ФРОНТІ (це critical!)
+    const connection = new solanaWeb3.Connection("https://api.devnet.solana.com");
+    const { blockhash } = await connection.getLatestBlockhash();
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = window.solana.publicKey;
+
+    // 5️⃣ Підпис через Phantom
+    const signedTx = await window.solana.signTransaction(tx);
+
+    // 6️⃣ Відправка у мережу
+    const txid = await connection.sendRawTransaction(signedTx.serialize());
+    await connection.confirmTransaction(txid);
+
+    // 7️⃣ Збереження сесії в базу даних
+    await fetch("http://localhost:3000/session/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
+      body: JSON.stringify({
+        session_pubkey: data.sessionPubkey,
+        gpu_id: gpuId
+      })
+    });
+
+    // 8️⃣ Оновлення статусу UI
+    statusMsg.innerHTML = `✅ Сесія активна (${duration} год)<br>Tx: <a href="https://explorer.solana.com/tx/${txid}?cluster=devnet" target="_blank">${txid}</a>`;
+
+    // 9️⃣ Кнопка завершення вручну
+    const finishBtn = document.createElement("button");
+    finishBtn.textContent = "⏹ Завершити вручну";
+    finishBtn.onclick = () => endSession(data.sessionPubkey, gpuId);
+    statusMsg.appendChild(finishBtn);
+
+    // 🔟 Автоматичне завершення через N годин (опційно)
+    setTimeout(() => endSession(data.sessionPubkey, gpuId), duration * 3600 * 1000);
+
+  } catch (err) {
+    statusMsg.textContent = "❌ Помилка: не вдалося почати сесію";
+    console.error(err);
+  }
+}
+
+    async function endSession(sessionPubkey, gpuId) {
+  const statusMsg = document.getElementById(`status-${gpuId}`);
+  try {
+    // 1. Отримуємо транзакцію завершення з бекенду
+    const res = await fetch("http://localhost:3000/session/end", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({
+        session_pubkey: sessionPubkey,
+        renter_pubkey: window.solana.publicKey.toString()
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.tx) {
+      statusMsg.textContent = "❌ Не вдалося завершити сесію";
+      return;
+    }
+
+    // 2. Підпис і відправка транзакції
+    const rawTx = Uint8Array.from(atob(data.tx), (c) => c.charCodeAt(0));
+    const tx = solanaWeb3.Transaction.from(rawTx);
+
+    // Додаємо актуальний blockhash і feePayer
+    const connection = new solanaWeb3.Connection("https://api.devnet.solana.com");
+    const { blockhash } = await connection.getLatestBlockhash();
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = window.solana.publicKey;
+
+    const signedTx = await window.solana.signTransaction(tx);
+    const txid = await connection.sendRawTransaction(signedTx.serialize());
+    await connection.confirmTransaction(txid);
+
+    // 3. Оновлюємо статус сесії в БД
+    await fetch("http://localhost:3000/session/mark-ended", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({
+        session_pubkey: sessionPubkey,
+        txid: txid
+      })
+    });
+
+    statusMsg.innerHTML = `✅ Завершено.<br>Tx: <a href="https://explorer.solana.com/tx/${txid}?cluster=devnet" target="_blank">${txid}</a>`;
+  } catch (err) {
+    statusMsg.textContent = "❌ Системна помилка";
+    console.error(err);
+  }
+}
 
     fetchAvailableGPUs();
   </script>

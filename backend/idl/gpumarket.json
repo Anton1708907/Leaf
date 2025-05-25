@@ -1,84 +1,66 @@
 {
-  "version": "0.1.0",
-  "name": "gpumarket",
-  "address": "DPQG3BiR9Avg5mknQTDKZ24w4T9D8NEKmgALvEyyH2N4",
-  "instructions": [
+  "address": "Akb9QUyV4rZeZd6kJHKMj2UEsZ32z9s8HsbqFCCkND4A",
+  "metadata": {
+    "name": "gpumarket",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+   "instructions": [
     {
-      "name": "registerGpu",
+      "name": "end_session",
       "accounts": [
-        {
-          "name": "gpuAccount",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
-          "name": "owner",
-          "isMut": true,
-          "isSigner": true
-        },
-        {
-          "name": "systemProgram",
-          "isMut": false,
-          "isSigner": false
-        }
-      ],
-      "args": [
-        {
-          "name": "specs",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "name": "startSession",
-      "accounts": [
-        {
-          "name": "sessionAccount",
-          "isMut": true,
-          "isSigner": true
-        },
-        {
-          "name": "renter",
-          "isMut": true,
-          "isSigner": true
-        },
-        {
-          "name": "gpuAccount",
-          "isMut": false,
-          "isSigner": false
-        },
-        {
-          "name": "systemProgram",
-          "isMut": false,
-          "isSigner": false
-        }
-      ],
-      "args": [
-        {
-          "name": "durationHours",
-          "type": "u64"
-        },
-        {
-          "name": "pricePerHour",
-          "type": "u64"
-        }
-      ]
-    },
-    {
-      "name": "endSession",
-      "accounts": [
-        {
-          "name": "sessionAccount",
-          "isMut": true,
-          "isSigner": false
-        },
-        {
-          "name": "provider",
-          "isMut": true,
-          "isSigner": true
-        }
+        { "name": "session_account", "isMut": true, "isSigner": false },
+        { "name": "provider", "isMut": true, "isSigner": false },
+        { "name": "renter", "isMut": true, "isSigner": true }
       ],
       "args": []
+    },
+    {
+      "name": "register_gpu",
+      "accounts": [
+        {
+          "name": "gpu_account",
+          "isMut": true,
+          "isSigner": false,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "type": "string", "value": "gpu" },
+              { "kind": "account", "type": "publicKey", "path": "owner" },
+              { "kind": "arg", "type": "string", "path": "specs" }
+            ]
+          }
+        },
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "system_program", "isMut": false, "isSigner": false, "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "specs", "type": "string" }
+      ]
+    },
+    {
+      "name": "start_session",
+      "accounts": [
+        {
+          "name": "session_account",
+          "isMut": true,
+          "isSigner": false,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "type": "string", "value": "session" },
+              { "kind": "account", "type": "publicKey", "path": "renter" },
+              { "kind": "account", "type": "publicKey", "path": "gpu_account" }
+            ]
+          }
+        },
+        { "name": "renter", "isMut": true, "isSigner": true },
+        { "name": "gpu_account", "isMut": false, "isSigner": false },
+        { "name": "system_program", "isMut": false, "isSigner": false, "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "duration_hours", "type": "u64" },
+        { "name": "price_per_hour", "type": "u64" }
+      ]
     }
   ],
   "accounts": [
@@ -87,18 +69,9 @@
       "type": {
         "kind": "struct",
         "fields": [
-          {
-            "name": "owner",
-            "type": "publicKey"
-          },
-          {
-            "name": "specs",
-            "type": "string"
-          },
-          {
-            "name": "active",
-            "type": "bool"
-          }
+          { "name": "owner", "type": "publicKey" },
+          { "name": "specs", "type": "string" },
+          { "name": "active", "type": "bool" }
         ]
       }
     },
@@ -107,34 +80,13 @@
       "type": {
         "kind": "struct",
         "fields": [
-          {
-            "name": "renter",
-            "type": "publicKey"
-          },
-          {
-            "name": "provider",
-            "type": "publicKey"
-          },
-          {
-            "name": "gpu",
-            "type": "publicKey"
-          },
-          {
-            "name": "startTime",
-            "type": "i64"
-          },
-          {
-            "name": "durationHours",
-            "type": "u64"
-          },
-          {
-            "name": "pricePerHour",
-            "type": "u64"
-          },
-          {
-            "name": "status",
-            "type": { "defined": "SessionStatus" }
-          }
+          { "name": "renter", "type": "publicKey" },
+          { "name": "provider", "type": "publicKey" },
+          { "name": "gpu", "type": "publicKey" },
+          { "name": "start_time", "type": "i64" },
+          { "name": "duration_hours", "type": "u64" },
+          { "name": "price_per_hour", "type": "u64" },
+          { "name": "status", "type": { "defined": "SessionStatus" } }
         ]
       }
     }
@@ -153,16 +105,7 @@
     }
   ],
   "errors": [
-    {
-      "code": 6000,
-      "name": "SessionNotActive",
-      "msg": "Session is not active."
-    },
-    {
-      "code": 6001,
-      "name": "InsufficientFunds",
-      "msg": "Insufficient funds in session account."
-    }
+    { "code": 6000, "name": "SessionNotActive", "msg": "Session is not active." },
+    { "code": 6001, "name": "InsufficientFunds", "msg": "Insufficient funds in session account." }
   ]
 }
-  

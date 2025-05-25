@@ -30,7 +30,8 @@
   <p id="walletStatus">⏳ Гаманець не підключено</p>
 
   <hr>
-
+ <button id="toRent">Орендувати GPU</button>
+ <hr>
   <h2>💻 Мої GPU</h2>
   <div id="gpus"></div>
 
@@ -47,6 +48,7 @@
   <p id="gpuAddStatus"></p>
 
   <script>
+    let owner_public_key = null;
     const token = localStorage.getItem("jwt");
     const profileDiv = document.getElementById("profile");
     const gpusDiv = document.getElementById("gpus");
@@ -112,7 +114,6 @@
         walletStatus.textContent = "❌ Помилка: " + data.error;
       }
     }
-
     document.getElementById("connectPhantom").onclick = async () => {
       if (!window.solana || !window.solana.isPhantom) {
         return alert("Встановіть Phantom Wallet: https://phantom.app/");
@@ -120,6 +121,7 @@
 
       try {
         const resp = await window.solana.connect();
+        owner_public_key = resp.publicKey.toString();
         const publicKey = resp.publicKey.toString();
         walletStatus.textContent = "🔐 Підключено: " + publicKey;
         await savePublicKey(publicKey);
@@ -131,7 +133,9 @@
         }
       }
     };
-
+document.getElementById("toRent").onclick = () => {
+  window.location.href = "rent.html";
+}
     window.addEventListener("DOMContentLoaded", async () => {
       await fetchUser();
 
@@ -175,14 +179,15 @@
       }),
     });
 
-    const { transaction, gpu_pubkey, gpu_secret } = await txRes.json();
-    if (!transaction) {
+    const { transaction, gpu_pubkey } = await txRes.json();
+
+    if (!transaction || !gpu_pubkey) {
       statusField.textContent = "❌ Не вдалося створити транзакцію";
       return;
     }
 
     // 2️⃣ Декодуємо Base64 → Uint8Array
-    const rawTx = Uint8Array.from(atob(transaction), c => c.charCodeAt(0));
+    const rawTx = Uint8Array.from(atob(transaction), (c) => c.charCodeAt(0));
     const tx = solanaWeb3.Transaction.from(rawTx);
 
     // 3️⃣ Підписуємо через Phantom
@@ -199,15 +204,15 @@
         "Content-Type": "application/json",
         Authorization: "Bearer " + token,
       },
-  body: JSON.stringify({
-    signedTx: signedBase64,
-    gpu_pubkey: gpu_pubkey,
-    gpu_secret: gpu_secret, // ✅ ось тут
-    model,
-    vram_gb: vram,
-    location,
-    price_per_hour: price,
-  }),
+      body: JSON.stringify({
+        signedTx: signedBase64,
+        gpu_pubkey, // pda
+        model,
+        vram_gb: vram,
+        location,
+        price_per_hour: price,
+        owner_public_key
+      }),
     });
 
     const result = await submitRes.json();

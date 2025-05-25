@@ -8,7 +8,7 @@ const bs58 = require("bs58");
 const pool = require("../db");
 
 const SECRET = "super_secret_key_123";
-const PROGRAM_ID = new PublicKey("DPQG3BiR9Avg5mknQTDKZ24w4T9D8NEKmgALvEyyH2N4");
+const PROGRAM_ID = new PublicKey("Akb9QUyV4rZeZd6kJHKMj2UEsZ32z9s8HsbqFCCkND4A");
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 const idl = require("../idl/gpumarket.json");
 
@@ -50,31 +50,50 @@ router.post("/create-tx", async (req, res) => {
   try {
     const { specs, pubkey } = req.body;
     const userPubkey = new PublicKey(pubkey);
-    const gpuKeypair = Keypair.generate();
 
-    const tx = await program.methods
-      .registerGpu(specs)
-      .accounts({
-        gpuAccount: gpuKeypair.publicKey,
-        owner: userPubkey,
-        systemProgram: SystemProgram.programId,
-      })
-      .transaction();
+    const [gpuPda, bump] = await PublicKey.findProgramAddressSync(
+      [Buffer.from("gpu"), userPubkey.toBuffer(), Buffer.from(specs)],
+      program.programId
+    );
 
+    console.log('Accounts for registerGpu:', {
+  gpu_account: gpuPda.toBase58(),
+  owner: userPubkey.toBase58(),
+  systemProgram: SystemProgram.programId.toBase58()
+});
+const tx = await program.methods
+  .registerGpu(specs)
+  .accounts({
+    gpu_account: gpuPda,
+    owner: userPubkey,
+    system_program: SystemProgram.programId
+  })
+  .transaction();
     tx.feePayer = userPubkey;
     tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-
+console.log('------ Accounts in Transaction ------');
+tx.instructions[0].keys.forEach(k =>
+  console.log(
+    `${k.pubkey.toBase58()} | signer: ${k.isSigner} | writable: ${k.isWritable}`
+  )
+);
+console.log('-------------------------------------');
+tx.instructions.forEach(ix => {
+  ix.keys[0].isSigner = false;  // gpu_account (PDA)
+  ix.keys[0].isWritable = true;
+  ix.keys[1].isSigner = true;   // owner
+  ix.keys[1].isWritable = true;
+  ix.keys[2].isSigner = false;  // systemProgram
+  ix.keys[2].isWritable = false;
+});
     const serialized = tx.serialize({
-      requireAllSignatures: false,
+      requireAllSignatures: false,  
       verifySignatures: false,
     });
 
-    const base64 = Buffer.from(serialized).toString("base64");
-
     res.json({
-      transaction: base64,
-      gpu_pubkey: gpuKeypair.publicKey.toBase58(),
-      gpu_secret: Array.from(gpuKeypair.secretKey), // щоб зберегти при сабміті
+      transaction: Buffer.from(serialized).toString("base64"),
+      gpu_pubkey: gpuPda.toBase58(),
     });
   } catch (err) {
     console.error("❌ create-tx error:", err);
@@ -85,25 +104,36 @@ router.post("/create-tx", async (req, res) => {
 // ✅ ПІДПИСАНА КОРИСТУВАЧЕМ — ВІДПРАВЛЯЄМО В МЕРЕЖУ
 router.post("/submit-tx", async (req, res) => {
   try {
-    const { signedTx, gpu_pubkey, gpu_secret, model, vram_gb, location, price_per_hour } = req.body;
+    const { signedTx, gpu_pubkey, model, vram_gb, location, price_per_hour, owner_public_key } = req.body;
 
-    if (!signedTx || !gpu_secret) {
-      return res.status(400).json({ error: "Missing signedTx or gpu_secret" });
+    if (!signedTx || !gpu_pubkey) {
+      return res.status(400).json({ error: "Missing signedTx or gpu_pubkey" });
     }
 
-    const bufferTx = Buffer.from(signedTx, "base64");
-    const finalTx = anchor.web3.Transaction.from(bufferTx);
+    // 1️⃣ Декодуємо та десеріалізуємо транзакцію
+  const tx = anchor.web3.Transaction.from(Buffer.from(signedTx, "base64"));
+  const txid = await connection.sendRawTransaction(tx.serialize());
 
-    const txid = await connection.sendRawTransaction(finalTx.serialize());
-    await connection.confirmTransaction(txid, "confirmed");
+    // 🔁 Оновлений спосіб підтвердження транзакції
+    const latestBlockhash = await connection.getLatestBlockhash();
+    await connection.confirmTransaction(
+      {
+        signature: txid,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      },
+      "confirmed"
+    );
 
+    // 3️⃣ Отримуємо власника з токена
     const { id } = jwt.verify(req.headers.authorization.split(" ")[1], SECRET);
 
-    await pool.query(
-      `INSERT INTO gpus (owner_id, model, vram_gb, location, status, price_per_hour)
-       VALUES ($1, $2, $3, $4, 'available', $5)`,
-      [id, model, vram_gb, location, price_per_hour]
-    );
+    // 4️⃣ Записуємо GPU в базу
+await pool.query(
+  `INSERT INTO gpus (owner_id, model, vram_gb, location, status, price_per_hour, public_key, owner_public_key)
+   VALUES ($1, $2, $3, $4, 'available', $5, $6, $7)`,
+  [id, model, vram_gb, location, price_per_hour, gpu_pubkey, owner_public_key]
+);
 
     res.json({ success: true, txid });
   } catch (err) {

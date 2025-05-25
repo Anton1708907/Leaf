@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("DPQG3BiR9Avg5mknQTDKZ24w4T9D8NEKmgALvEyyH2N4");
+declare_id!("Akb9QUyV4rZeZd6kJHKMj2UEsZ32z9s8HsbqFCCkND4A");
 
 #[program]
 pub mod gpumarket {
@@ -8,7 +8,7 @@ pub mod gpumarket {
 
     pub fn register_gpu(ctx: Context<RegisterGpu>, specs: String) -> Result<()> {
         let gpu = &mut ctx.accounts.gpu_account;
-        gpu.owner = *ctx.accounts.owner.key;
+        gpu.owner = ctx.accounts.owner.key();
         gpu.specs = specs;
         gpu.active = true;
         Ok(())
@@ -20,7 +20,7 @@ pub mod gpumarket {
         price_per_hour: u64,
     ) -> Result<()> {
         let session = &mut ctx.accounts.session_account;
-        session.renter = *ctx.accounts.renter.key;
+        session.renter = ctx.accounts.renter.key();
         session.provider = ctx.accounts.gpu_account.owner;
         session.gpu = ctx.accounts.gpu_account.key();
         session.start_time = Clock::get()?.unix_timestamp;
@@ -57,17 +57,26 @@ pub mod gpumarket {
 }
 
 #[derive(Accounts)]
-pub struct RegisterGpu<'info> {
-    #[account(init, payer = owner, space = 8 + 32 + 4 + 200 + 1)]
-    pub gpu_account: Account<'info, GpuAccount>,
-    #[account(mut)]
-    pub owner: Signer<'info>,
-    pub system_program: Program<'info, System>,
+#[instruction(specs: String)]
+pub struct RegisterGpu<'info>
+{
+#[account(init,seeds = [b"gpu", owner.key().as_ref(), specs.as_bytes()],bump,payer = owner,space = 8 + 32 + 4 + 200 + 1)]
+pub gpu_account: Account<'info, GpuAccount>,
+#[account(mut)]
+pub owner: Signer<'info>,
+pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
+#[instruction(duration_hours: u64, price_per_hour: u64)]
 pub struct StartSession<'info> {
-    #[account(init, payer = renter, space = 8 + 32*3 + 8*3 + 1)]
+    #[account(
+        init,
+        seeds = [b"session", renter.key().as_ref(), gpu_account.key().as_ref()],
+        bump,
+        payer = renter,
+        space = 8 + 32*3 + 8*3 + 1
+    )]
     pub session_account: Account<'info, Session>,
     #[account(mut)]
     pub renter: Signer<'info>,

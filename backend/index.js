@@ -23,7 +23,7 @@ const provider = new anchor.AnchorProvider(connection, wallet, {
 
 anchor.setProvider(provider);
 
-const programId = new PublicKey("DPQG3BiR9Avg5mknQTDKZ24w4T9D8NEKmgALvEyyH2N4"); // ✅ Твій задеплоєний ID
+const programId = new PublicKey("Akb9QUyV4rZeZd6kJHKMj2UEsZ32z9s8HsbqFCCkND4A"); // ✅ Твій задеплоєний ID
 const program = new anchor.Program(idl, programId, provider);
 
 // === Експортуємо у глобальний об'єкт app.locals для доступу з роутів ===
